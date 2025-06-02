@@ -91,6 +91,7 @@ with tab3:
             fig_bar = px.bar(avg_df_melted, x="指標", y="平均值", color="room", barmode="group",
                              title="房間數平均表現直方圖")
             st.plotly_chart(fig_bar)
+
 # ===============================
 # 5. 探索性資料分析：變數關聯與趨勢
 # ===============================
@@ -104,10 +105,35 @@ fig_corr = px.imshow(corr, text_auto=True, aspect="auto", title="數值欄位相
 st.plotly_chart(fig_corr)
 
 st.subheader("變數與單價的關聯")
-eda_option = st.selectbox("請選擇要分析的變數", ["age", "area", "room", "ratio"])
-fig_scatter = px.scatter(eda_df, x=eda_option, y="price_unit", trendline="ols",
-                         title=f"{eda_option} 與單價的關聯", labels={eda_option: eda_option, "price_unit": "單價"})
+
+# 中文欄位對應原始欄位
+eda_options = {
+    "屋齡": "age",
+    "面積": "area",
+    "房間數": "room",
+    "占比率": "ratio"
+}
+
+# 選單顯示中文，實際用欄位名稱
+eda_option_zh = st.selectbox("請選擇要分析的變數", list(eda_options.keys()))
+eda_option = eda_options[eda_option_zh]
+
+# 畫圖
+fig_scatter = px.scatter(
+    eda_df,
+    x=eda_option,
+    y="price_unit",
+    trendline="ols",
+    title=f"{eda_option_zh} 與單價的關聯",
+    labels={eda_option: eda_option_zh, "price_unit": "單價"}
+)
 st.plotly_chart(fig_scatter)
+
+# 取得回歸結果並顯示R平方值
+results = px.get_trendline_results(fig_scatter)
+model = results.iloc[0]["px_fit_results"]
+st.write(f"回歸模型 R平方值 = {model.rsquared:.4f}")
+
 # ===============================
 # 6. 使用者輸入進行預測
 # ===============================
@@ -117,10 +143,20 @@ input_age = st.number_input("屋齡", min_value=10, max_value=100, value=25)
 input_area = st.number_input("總面積", min_value=10, max_value=260, value=45)
 input_room = st.number_input("房間數", min_value=2, max_value=10, value=3)
 
+# 預測模型預設（需事先訓練）
+# 這裡給一個預設model示意，你要自己加載或訓練模型
+try:
+    model
+except NameError:
+    # 假設有訓練好的model，可以直接載入
+    # 這裡先用簡單訓練示例代替，避免程式錯誤
+    from sklearn.linear_model import LinearRegression
+    X = df[["age", "area", "room"]].fillna(0)
+    y = df["price_unit"].fillna(0)
+    model = LinearRegression().fit(X, y)
+
 if st.button("預測"):
     input_data = pd.DataFrame([[input_age, input_area, input_room]],
                               columns=["age", "area", "room"])
     pred = model.predict(input_data)[0]
     st.success(f"🌟 預測單價為：{pred:.2f} 萬元")
-
-
