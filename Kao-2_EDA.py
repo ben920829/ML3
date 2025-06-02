@@ -8,9 +8,7 @@ import streamlit as st
 import pandas as pd
 import plotly.express as px
 import plotly.graph_objects as go
-from sklearn.ensemble import RandomForestRegressor
-from sklearn.model_selection import train_test_split
-from sklearn.preprocessing import MinMaxScaler
+import statsmodels.api as sm
 
 # ===============================
 # 1. 資料載入與基本顯示
@@ -80,7 +78,6 @@ with tab3:
         st.warning("⚠️ 篩選後無資料可供圖表分析，請調整側欄條件")
     else:
         bar_df = filtered_df.dropna(subset=["ratio", "price_unit", "price_total"])
-        print(bar_df[["ratio", "price_unit", "price_total"]].dtypes)
         bar_df[["ratio", "price_unit", "price_total"]] = bar_df[["ratio", "price_unit", "price_total"]].apply(pd.to_numeric, errors='coerce')
         bar_df = bar_df.dropna(subset=["ratio", "price_unit", "price_total"])
         if bar_df.empty:
@@ -106,33 +103,37 @@ st.plotly_chart(fig_corr)
 
 st.subheader("變數與單價的關聯")
 
-# 中文欄位對應原始欄位
-eda_options = {
-    "屋齡": "age",
-    "面積": "area",
-    "房間數": "room",
-    "占比率": "ratio"
+# 對應顯示名稱
+label_dict = {
+    "age": "屋齡",
+    "area": "面積",
+    "room": "房間數",
+    "ratio": "占比率"
 }
 
-# 選單顯示中文，實際用欄位名稱
-eda_option_zh = st.selectbox("請選擇要分析的變數", list(eda_options.keys()))
-eda_option = eda_options[eda_option_zh]
+eda_option = st.selectbox("請選擇要分析的變數", ["age", "area", "room", "ratio"])
 
-# 畫圖
+# 建立回歸模型，加入常數項
+X = eda_df[[eda_option]]
+X = sm.add_constant(X)  # 加入截距項
+y = eda_df["price_unit"]
+
+model = sm.OLS(y, X).fit()
+r2 = model.rsquared
+
+# 顯示 R平方值
+st.markdown(f"**R² = {r2:.4f}**")
+
+# 畫散佈圖與趨勢線
 fig_scatter = px.scatter(
     eda_df,
     x=eda_option,
     y="price_unit",
     trendline="ols",
-    title=f"{eda_option_zh} 與單價的關聯",
-    labels={eda_option: eda_option_zh, "price_unit": "單價"}
+    title=f"{label_dict[eda_option]} 與單價的關聯",
+    labels={eda_option: label_dict[eda_option], "price_unit": "單價"}
 )
 st.plotly_chart(fig_scatter)
-
-# 取得回歸結果並顯示R平方值
-results = px.get_trendline_results(fig_scatter)
-model = results.iloc[0]["px_fit_results"]
-st.write(f"回歸模型 R平方值 = {model.rsquared:.4f}")
 
 # ===============================
 # 6. 使用者輸入進行預測
@@ -143,20 +144,12 @@ input_age = st.number_input("屋齡", min_value=10, max_value=100, value=25)
 input_area = st.number_input("總面積", min_value=10, max_value=260, value=45)
 input_room = st.number_input("房間數", min_value=2, max_value=10, value=3)
 
-# 預測模型預設（需事先訓練）
-# 這裡給一個預設model示意，你要自己加載或訓練模型
-try:
-    model
-except NameError:
-    # 假設有訓練好的model，可以直接載入
-    # 這裡先用簡單訓練示例代替，避免程式錯誤
-    from sklearn.linear_model import LinearRegression
-    X = df[["age", "area", "room"]].fillna(0)
-    y = df["price_unit"].fillna(0)
-    model = LinearRegression().fit(X, y)
-
 if st.button("預測"):
     input_data = pd.DataFrame([[input_age, input_area, input_room]],
                               columns=["age", "area", "room"])
-    pred = model.predict(input_data)[0]
-    st.success(f"🌟 預測單價為：{pred:.2f} 萬元")
+    input_data_const = sm.add_constant(input_data)  # 加入截距項
+    try:
+        pred = model.predict(input_data_const)[0]
+        st.success(f"🌟 預測單價為：{pred:.2f} 萬元")
+    except Exception as e:
+        st.error(f"預測出錯: {e}")
